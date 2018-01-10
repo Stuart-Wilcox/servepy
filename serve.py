@@ -92,6 +92,7 @@ class App():
             # get protocol, method, and path
             httpLine = rawRequest.replace('\r', '').split('\n')[0].split(' ')
             method, path, protocol = httpLine
+            completeUrl = protocol.split('/')[0].lower() + '://' + self.server.app._getHostname() + ':' + str(self.server.app._getPort()) + path
 
             rawRequest = rawRequest.replace('\r', '').split('\n')[1:] # format line endings then split by them. Remove the http header line
 
@@ -115,11 +116,38 @@ class App():
                     body = '\n'.join(rawRequest[index:]) # add the entire body in one chunk, after putting the lines together
                     break
 
-            return Request(self.server.app, path, protocol, method, headers, body=body, params=None, cookies=None, baseUrl=None), path
+            return Request(self.server.app, completeUrl, protocol, method, headers, body=body, params=None, cookies=None, baseUrl=None), path
 
         def exec_callbacks(self, path, method, request, response):
             # get the callbacks in order
-            callbacks = [c for p,m,c in self.server.app._routePath(path, method)]
+            endware, middleware = self.server.app._routePath(path, method)
+
+            callbacks = [c for p,m,c in endware]
+            middleware_callbacks = [c for p, c in middleware]
+
+            class Next:
+                def __init__(self, next=False):
+                    self.n = next
+                def false(self):
+                    self.n = False
+                def toggle(self):
+                    if self.n:
+                        self.n = False
+                    else:
+                        self.n = True
+                def next(self):
+                    self.n = True
+
+            if len(middleware_callbacks) != 0:
+                next = Next(True)
+                for index, callback in enumerate(middleware_callbacks):
+                    next.toggle()
+
+                    callback(request, response, next.next)
+                    if response._sent:
+                        return
+                    if not next.n:
+                        raise Exception('Must use next()')
 
             if len(callbacks) == 0:
                 # there is nothing to do
@@ -131,14 +159,10 @@ class App():
                 n = False
                 def next():
                     n = True
-                callback(request, response, next)
-
-                # If the request was sent then stop executing and send it (return control to caller)
-                if response._sent:
-                    break
-                # If sent was not called and next was not called, then terminate current thread, without sending response to client
-                if not n:
-                    threading.current_thread()._is_alive = False
+                try:
+                    callback(request, response)
+                except TypeError:
+                    callback(request, response, next)
 
 
     # the implementation of the underlying socket server
@@ -256,22 +280,29 @@ class App():
 
     def use(self, callback, path='/', *args, **kwargs):
         # mounts the specified middleware function(s) at the specified path
-        self.routers[0].append(callback)
+        self.routers.append(callback)
 
     def _getHostname(self):
         return self.__hostname
+
+    def _getPort(self):
+        return self.__port
 
     def _getIp(self):
         return '127.0.0.1' # TODO
 
     def _routePath(self, path, method):
         entries = []
+        middlewareEntries = []
         for router in self.routers:
             matches = router._pathMatch(path)
+            middlewareMatches = router._middlewarePathMatch(path)
+            if middlewareMatches is not None and len(middlewareMatches) != 0:
+                middlewareEntries.extend(middlewareMatches)
             if matches is None or len(matches) == 0:
                 continue
             entries.extend(matches)
-        return entries
+        return (entries, middlewareEntries)
 
 
 class Router():
@@ -283,6 +314,7 @@ class Router():
         self.subRouters = [] # list of subrouters of the form (Router, path)
         self.pathPrefix = ''
         self.paths = set() # all paths under this router for qucker lookup
+        self.middlewarePaths = set()
         self.pathTable = list() # list of tuples of the form (path, method, callback) where callback is an ENDWARE function
         self.middlewarePathTable = list() # list of tuples of the form (path, callback) where callback is a MIDDLEWARE function
 
@@ -333,7 +365,7 @@ class Router():
         if path is None:
             path = '/'
         self._validatePath(path)
-        self.paths.add(path)
+        self.middlewarePaths.add(path)
         self.middlewarePathTable.append( (self._buildpath(path), function) )
 
     def _validatePath(self, path):
@@ -359,6 +391,19 @@ class Router():
             paths.extend(self.paths)
             return paths
 
+    def _getMiddlewarePaths(self):
+        if len(self.subRouters) is 0:
+            # this is a leaf
+            return self.middlewarePaths
+        else:
+            # this is the root router
+            paths = []
+            for subRouterEntry in self.subRouters:
+                for path in subRouterEntry[0]._getMiddlewarePaths(): # subRouterEntry[0] is the router, [1] is the path
+                    paths.append(subRouterEntry[1]+path[1:])
+            paths.extend(self.middlewarePaths)
+            return paths
+
     def _getPathTable(self):
         if len(self.subRouters) is 0:
             return self.pathTable
@@ -366,10 +411,21 @@ class Router():
             pathTable = []
             for subRouterEntry in self.subRouters:
                 for pathTableEntry in subRouterEntry[0]._getPathTable():
-                    pathTable.append((pathTableEntry[0], pathTableEntry[1], pathTableEntry[2]))
+                    pathTable.append( (pathTableEntry[0], pathTableEntry[1], pathTableEntry[2]) )
 
             pathTable.extend(self.pathTable)
         return pathTable
+
+    def _getMiddlewarePathTable(self):
+        if len(self.subRouters) is 0:
+            return self.middlewarePathTable
+        else:
+            middlewarePathTable = []
+            for subRouterEntry in self.subRouters:
+                for middlewarePathTableEntry in subRouterEntry[0]._getMiddlewarePathTable():
+                    middlewarePathTable.append( (middlewarePathTableEntry[0], middlewarePathTableEntry[1]) )
+            middlewarePathTable.extend(self.middlewarePathTable)
+        return middlewarePathTable
 
     def _pathMatch(self, path):
         path = path.split('?')[0]+'/' # get rid of query params
@@ -390,7 +446,36 @@ class Router():
                     if entry[0] == p_str:
                         candidate_paths.append(entry)
 
+        return candidate_paths
 
+    def _middlewarePathMatch(self, path):
+        path = path.split('?')[0]+'/' # get rid of query params
+        path = path.replace('//', '/') # remove any errors in previous step
+        path = path.split('/')[1:-1] # get rid of 'http:/' and the trailing '/'
+        paths = self._getMiddlewarePaths() # get paths in a recursive manner
+        candidate_paths = [] # holder for the candidates
+
+        for p in paths:
+            # remove everything before first '/' and after last '/'
+            p = p.split('/')[1:-1]
+            p_str = '/'.join(p)
+            p_str = '/'+p_str+'/'
+            p_str = p_str.replace('//', '/')
+
+            pathSubset = True
+
+            if len(p) <= len(path):
+                for index, section in enumerate(p):
+                    if section != path[index]:
+                        pathSubset = False
+
+            if pathSubset:
+                for entry in self._getMiddlewarePathTable():
+                    availPathSet = entry[0]
+                    pathSet = p_str
+
+                    if availPathSet <= pathSet:
+                        candidate_paths.append(entry)
 
         return candidate_paths
 
@@ -613,15 +698,20 @@ class Response():
 
 if __name__=='__main__':
 
-    def dummy_func_1(req, res, next):
+    def middleware_func_1(req, res, next):
+        print("[%s] %s" % (req.method, req.originalUrl) )
+        next()
+
+    def dummy_func_1(req, res):
         res.append('Content-Type', 'text/plain').send("Hello World")
 
-    def dummy_func_2(req, res, next):
+    def dummy_func_2(req, res):
         res.append('Content-Type', 'application/json').status(200).send('{"success":"true"}')
 
     app = App()
 
     router = Router()
+    router.use('/', middleware_func_1)
     router.route('/').get('/', dummy_func_1).get('/working/', dummy_func_2)
     app.use(router)
     app.listen(port=8080, hostname='localhost')
