@@ -213,6 +213,8 @@ Returns the matching content type if the incoming request’s ```Content-Type```
 Deprecated. Use either req.params, req.body or req.query, as applicable.
 ###### range(size [,options])
 Range header parser. The ```size``` parameter is the maximum size of the resource. The ```options``` parameter is an object that can have a combine property to specify overlapping & adjacent ranges should be combined. Defaults to ```False```.
+
+
 ### Response
 #### Properties
 ###### app
@@ -226,11 +228,11 @@ An object that contains response local variables scoped to the request, and ther
 This property is useful for exposing request-level information such as the request path name, authenticated user, user settings, and so on.
 #### Methods
 ###### append(field [, value])
-Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter can be a string or an array.
+Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter can be a string or an array. If the header is already set, the value given as a parameter will be ignored and the value in place will remain.
 
 Note: calling ```res.set()``` after ```res.append()``` will reset the previously-set header value.
 ###### attachment([filename])
-Sets the HTTP response ```Content-Disposition``` header field to “attachment”. If a filename is given, then it sets the ```Content-Type``` based on the extension name via ```res.type()```, and sets the ```Content-Disposition``` “filename=” parameter.
+Sets the HTTP response ```Content-Disposition``` header field to “attachment”. If a filename is given, then it sets the ```Content-Type``` based on the extension name, and sets the ```Content-Disposition``` “filename=” parameter.
 ###### cookie(name, value [, options])
 Sets cookie name to value. The value parameter may be a string or object.
 
