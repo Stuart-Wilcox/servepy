@@ -252,7 +252,7 @@ class App():
 
     def path(self):
         # canonical path of the app
-        pass
+        return self.__path
 
     def post(self, path, callback, *args, **kwargs):
         # routes HTTP POST requests to the specified path and callback(s)
@@ -427,6 +427,7 @@ class Router():
             middlewarePathTable.extend(self.middlewarePathTable)
         return middlewarePathTable
 
+    # TODO: extend to allow path params
     def _pathMatch(self, path):
         path = path.split('?')[0]+'/' # get rid of query params
         path = path.replace('//', '/') # remove any errors in previous step
@@ -439,15 +440,25 @@ class Router():
             p = p.split('/')[1:-1]
             p_str = '/'.join(p)
             p_str = '/'+p_str+'/'
-            p_str = p_str.replace('//', '/')
+            p_str = p_str.replace('//', '/') # build p_str into a string version of the path name
 
             if p == path:
+                # p in _getPaths() matches path
+
+                # find the entries in the pathTable where the path matches the candidate (there may be multiple)
                 for entry in self._getPathTable():
                     if entry[0] == p_str:
                         candidate_paths.append(entry)
 
+                if len(candidate_paths) == 0:
+                    for entry in self._getPathTable():
+                        # check paths to look for wildcards via ':' delimeter
+                        pass
+
         return candidate_paths
 
+
+    # TODO: extend to allow path params
     def _middlewarePathMatch(self, path):
         path = path.split('?')[0]+'/' # get rid of query params
         path = path.replace('//', '/') # remove any errors in previous step
@@ -479,6 +490,53 @@ class Router():
 
         return candidate_paths
 
+class Path():
+    def __init__(self, path):
+        # check for the empty string
+        if len(path) == 0:
+            #TODO: raise PathNameError('Path name cannot be blank')
+            pass
+
+
+        if not path.startswith('/'):
+            # TODO: raise PathNameError('Invalid pathname, must start with \'/\')
+            pass
+
+        self.params = dict()
+        self.query = dict() # make a dictionary for the query string
+
+        if '?' in path:
+            query_string = path.split('?')[1] # split by the question mark and take the second half
+
+            for q in query_string.split('&'):
+                # iterate through the query parameters and populate the dictionary, delimeted by '&'
+                q = q.split('=') # split the query by name and value pairs, delimeted by '='
+                self.query[q[0]]=q[1] # fill the dictionary
+
+        self.path = path.split('/')[1:-1] # split the path by slashes and get rid of the first and last since they are always blank
+
+
+    def match(self, path, middleware=False):
+        if type(path) is str:
+            actual = path
+        else:
+            actual = path.path
+        expected = self.path
+
+        if not middleware:
+            if len(expected) != len(actual):
+                return False
+
+        for index, e in enumerate(expected):
+            # iterate over pieces of url. if they match, continue, if there is a path param deal with it. otherwise they dont match
+            a = actual[index]
+            if a == e:
+                continue
+            elif e.startswith(':'):
+                self.params[e.split(':')[1]] = a
+            else:
+                return False
+        return True
 
 class Request():
     def __init__(self, app, completeUrl, protocol, method, headers=dict(), body=None, params=None, cookies={}, baseUrl=None, path=None):

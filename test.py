@@ -1,110 +1,110 @@
 import importlib
 import unittest
-import express
+import serve
 
 def callback(req, res, next):
     pass
 
 class TestRouter(unittest.TestCase):
     def test_creation(self):
-        router = express.Router()
+        router = serve.Router()
         self.assertFalse(router is None)
         self.assertTrue(len(router.paths) is 0)
         self.assertTrue(len(router.pathTable) is 0)
         self.assertTrue(len(router.subRouters) is 0)
 
     def test_get(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.get('', callback)
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
             router.get('/', callback)
             self.assertTrue('/' in router.paths)
             self.assertTrue( ('/', 'GET', callback)  in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
         try:
             router.get('/abc/', callback)
             self.assertTrue('/abc/' in router.paths)
             self.assertTrue( ('/abc/', 'GET', callback) in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
     def test_post(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.post('', callback)
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
         try:
             router.post('/', callback)
             self.assertTrue('/' in router.paths)
             self.assertTrue( ('/', 'POST', callback)  in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
         try:
             router.post('/abc/', callback)
             self.assertTrue('/abc/' in router.paths)
             self.assertTrue( ('/abc/', 'POST', callback) in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
     def test_put(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.put('', callback)
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
             router.put('/', callback)
             self.assertTrue('/' in router.paths)
             self.assertTrue( ('/', 'PUT', callback)  in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
         try:
             router.put('/abc/', callback)
             self.assertTrue('/abc/' in router.paths)
             self.assertTrue( ('/abc/', 'PUT', callback) in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
     def test_delete(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.delete('', callback)
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
             router.delete('/', callback)
             self.assertTrue('/' in router.paths)
             self.assertTrue( ('/', 'DELETE', callback)  in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
         try:
             router.delete('/abc/', callback)
             self.assertTrue('/abc/' in router.paths)
             self.assertTrue( ('/abc/', 'DELETE', callback) in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
     def test_all(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.all('', callback)
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
@@ -114,7 +114,7 @@ class TestRouter(unittest.TestCase):
             self.assertTrue( ('/', 'POST', callback)  in router.pathTable)
             self.assertTrue( ('/', 'PUT', callback)  in router.pathTable)
             self.assertTrue( ('/', 'DELETE', callback)  in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
         try:
@@ -124,43 +124,37 @@ class TestRouter(unittest.TestCase):
             self.assertTrue( ('/abc/', 'POST', callback) in router.pathTable)
             self.assertTrue( ('/abc/', 'PUT', callback) in router.pathTable)
             self.assertTrue( ('/abc/', 'DELETE', callback) in router.pathTable)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
     def test_use(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.use('', callback)
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
             router.use('/', callback)
-            self.assertTrue('/' in router.paths)
-            self.assertTrue( ('/', 'GET', callback)  in router.pathTable)
-            self.assertTrue( ('/', 'POST', callback)  in router.pathTable)
-            self.assertTrue( ('/', 'PUT', callback)  in router.pathTable)
-            self.assertTrue( ('/', 'DELETE', callback)  in router.pathTable)
-        except express.Router.PathNameError:
+            self.assertTrue('/' in router.middlewarePaths)
+            self.assertTrue( ('/',callback)  in router.middlewarePathTable)
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
         try:
             router.use('/abc/', callback)
-            self.assertTrue('/abc/' in router.paths)
-            self.assertTrue( ('/abc/', 'GET', callback) in router.pathTable)
-            self.assertTrue( ('/abc/', 'POST', callback) in router.pathTable)
-            self.assertTrue( ('/abc/', 'PUT', callback) in router.pathTable)
-            self.assertTrue( ('/abc/', 'DELETE', callback) in router.pathTable)
-        except express.Router.PathNameError:
+            self.assertTrue('/abc/' in router.middlewarePaths)
+            self.assertTrue( ('/abc/', callback) in router.middlewarePathTable)
+        except serve.Router.PathNameError:
             self.assertTrue(False)
 
     def test_route(self):
-        router = express.Router()
+        router = serve.Router()
         try:
             router.route('')
             self.assertTrue(False)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
@@ -169,7 +163,7 @@ class TestRouter(unittest.TestCase):
             self.assertTrue(subRouter.pathPrefix is '/')
             self.assertTrue(len(subRouter.paths) is 0)
             self.assertTrue(len(subRouter.pathTable) is 0)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
         try:
@@ -178,11 +172,11 @@ class TestRouter(unittest.TestCase):
             self.assertTrue(subRouter.pathPrefix is '/abc/')
             self.assertTrue(len(subRouter.paths) is 0)
             self.assertTrue(len(subRouter.pathTable) is 0)
-        except express.Router.PathNameError:
+        except serve.Router.PathNameError:
             self.assertTrue(True)
 
     def test__getPaths(self):
-        router = express.Router()
+        router = serve.Router()
 
         self.assertTrue(len(router._getPaths()) is 0)
 
@@ -214,7 +208,7 @@ class TestRouter(unittest.TestCase):
         self.assertTrue('/def/ghi/def/' in router._getPaths())
 
     def test__pathMatch(self):
-        router = express.Router()
+        router = serve.Router()
 
         router.route('/abc/').get('/def/', callback).post('/DEF/', callback)
 
@@ -231,8 +225,8 @@ class TestRouter(unittest.TestCase):
 
 class TestRequest(unittest.TestCase):
     def test_creation(self):
-        app = express.App()
-        req = express.Request(app, 'http://localhost:8080/abc/123/', 'HTTP/1.1', 'GET')
+        app = serve.App()
+        req = serve.Request(app, 'http://localhost:8080/abc/123/', 'HTTP/1.1', 'GET')
         self.assertFalse(req is None)
         self.assertFalse(req.app is None)
         self.assertFalse(req.originalUrl is None)
@@ -255,7 +249,7 @@ class TestRequest(unittest.TestCase):
         '''
         headers = {'Content-Type': 'text/html', 'Content-Length':len(body), 'Cache-Control':'No-Cache'}
         cookies = {'token':'1q2w3e4r5t6y7u8i9o0p!A@S#D$F%G^H&J*K(L):', 'user':'Foo Bar'}
-        req = express.Request(app, 'http://localhost:8080/abc/123?foo=bar&baz=', 'HTTP/1.1', 'POST', headers=headers, body=body, cookies=cookies)
+        req = serve.Request(app, 'http://localhost:8080/abc/123?foo=bar&baz=', 'HTTP/1.1', 'POST', headers=headers, body=body, cookies=cookies)
 
         self.assertFalse(req is None)
         self.assertTrue(req.app is app)
@@ -336,11 +330,32 @@ class TestApp(unittest.TestCase):
     def test_use(self):
         pass
     def test__routePath(self):
-        app = express.App()
-        router = express.Router()
+        app = serve.App()
+        router = serve.Router()
         router.get('/abc/', callback)
         app.use(router, path='/')
         app._routePath('/abc/', 'GET')
+
+class TestPath(unittest.TestCase):
+    def test_creation(self):
+        path_str = ['/abc/123/', '/abc/123/', '/abc/:num/', '/abc/234/', '/def/123/']
+        paths = [serve.Path(p) for p in path_str]
+
+    def test_matching(self):
+        path_str = ['/abc/123/', '/abc/123/', '/abc/:num/', '/abc/234/', '/def/123/', '/abc/']
+        paths = [serve.Path(p) for p in path_str]
+
+        self.assertTrue(paths[0].match(paths[1]))
+        self.assertFalse(paths[0].match(paths[3]))
+
+        self.assertTrue(paths[2].match(paths[0]))
+        self.assertTrue(paths[2].params['num']=='123')
+
+        self.assertFalse(paths[0].match(paths[3]))
+        self.assertFalse(paths[0].match(paths[4]))
+
+        self.assertTrue(paths[5].match(paths[0], middleware=True))
+        self.assertFalse(paths[5].match(paths[4], middleware=True))
 
 
 if __name__ == '__main__':
