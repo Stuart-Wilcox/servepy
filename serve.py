@@ -457,6 +457,18 @@ class Router():
 
         return candidate_paths
 
+    def new_endware_path_match(self, path):
+        paths = self._getPaths()
+        candidate = None
+
+        for p in paths:
+            p = Path(p)
+            if p.match(Path(path)):
+                candidate = p
+
+        return candidate
+
+
 
     # TODO: extend to allow path params
     def _middlewarePathMatch(self, path):
@@ -490,6 +502,16 @@ class Router():
 
         return candidate_paths
 
+    def new_middleware_path_match(self, path):
+        paths = self._getMiddlewarePaths()
+        candidates = []
+
+        for p in paths:
+            p = Path(p)
+            if p.match(Path(path), middleware=True):
+                candidates.append(p)
+        return candidates
+
 class Path():
     def __init__(self, path):
         # check for the empty string
@@ -517,22 +539,27 @@ class Path():
 
 
     def match(self, path, middleware=False):
+        # path can be a string or a Path object
         if type(path) is str:
             actual = path
         else:
             actual = path.path
         expected = self.path
 
+        # unless middleware, the paths must have the same length to match
         if not middleware:
             if len(expected) != len(actual):
                 return False
 
         for index, e in enumerate(expected):
             # iterate over pieces of url. if they match, continue, if there is a path param deal with it. otherwise they dont match
+            if middleware and index >= len(actual):
+                return False
             a = actual[index]
             if a == e:
                 continue
             elif e.startswith(':'):
+                # deal with path param
                 self.params[e.split(':')[1]] = a
             else:
                 return False
@@ -753,6 +780,10 @@ class Response():
 
 
         return 'HTTP/1.1 %s %s\n%s\n%s' % (self.__status, statusString[self.__status], headerString, self._body)
+
+
+
+
 
 if __name__=='__main__':
 
