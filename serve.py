@@ -318,43 +318,37 @@ class Router():
         self.pathTable = list() # list of tuples of the form (path, method, callback) where callback is an ENDWARE function
         self.middlewarePathTable = list() # list of tuples of the form (path, callback) where callback is a MIDDLEWARE function
 
-    def all(self, path, callback, *args, **kwargs):
-        self._validatePath(path)
-        self.get(path, callback, args, kwargs)
-        self.post(path, callback, args, kwargs)
-        self.put(path, callback, args, kwargs)
-        self.delete(path, callback, args, kwargs)
+    def all(self, path, callback):
+        self._add_endware(path, 'GET', callback)
+        self._add_endware(path, 'POST', callback)
+        self._add_endware(path, 'PUT', callback)
+        return self._add_endware(path, 'DELETE', callback)
+
+    def get(self, path, callback):
+        return self._add_endware(path, 'GET', callback)
         return self
 
-    def get(self, path, callback, *args, **kwargs):
-        self._validatePath(path)
-        self.paths.add(path)
-        self.pathTable.append((self._buildpath(path), 'GET', callback))
-        return self
+    def post(self, path, callback):
+        return self._add_endware(path, 'POST', callback)
 
-    def post(self, path, callback, *args, **kwargs):
-        self._validatePath(path)
-        self.paths.add(path)
-        self.pathTable.append((self._buildpath(path), 'POST', callback))
-        return self
+    def put(self, path, callback):
+        return self._add_endware(path, 'PUT', callback)
 
-    def put(self, path, callback, *args, **kwargs):
-        self._validatePath(path)
-        self.paths.add(path)
-        self.pathTable.append((self._buildpath(path), 'PUT', callback))
-        return self
+    def delete(self, path, callback):
+        return self._add_endware(path, 'DELETE', callback)
 
-    def delete(self, path, callback, *args, **kwargs):
-        self._validatePath(path)
+    def _add_endware(self, path, method, callback):
+        path = self._validate_path(path)
         self.paths.add(path)
-        self.pathTable.append((self._buildpath(path), 'DELETE', callback))
+        self.pathTable.append( (self._buildpath(path), method, callback) )
+
         return self
 
     def param(self, name, callback):
         pass
 
     def route(self, path):
-        self._validatePath(path)
+        path = self._validate_path(path)
         subRouter = Router()
         subRouter.pathPrefix = path
         self.subRouters.append( (subRouter, path) )
@@ -362,17 +356,16 @@ class Router():
         return subRouter
 
     def use(self, path, function, *args, **kwargs):
-        if path is None:
-            path = '/'
-        self._validatePath(path)
+        path = self._validate_path(path)
         self.middlewarePaths.add(path)
         self.middlewarePathTable.append( (self._buildpath(path), function) )
 
-    def _validatePath(self, path):
+    def _validate_path(self, path):
         if not path.startswith('/'):
             raise self.PathNameError("Path must start with character '/'")
         if not path.endswith('/'):
-            raise self.PathNameError("Path must end with character '/'")
+            return path + '/'
+        return path
 
     def _buildpath(self, path):
         # append the path prefix to the given path, remove slash in between
@@ -513,16 +506,17 @@ class Router():
         return candidates
 
 class Path():
+    class PathNameError(Exception):
+        pass
+
     def __init__(self, path):
         # check for the empty string
         if len(path) == 0:
-            #TODO: raise PathNameError('Path name cannot be blank')
-            pass
+            raise self.PathNameError('Path name cannot be blank')
 
 
         if not path.startswith('/'):
-            # TODO: raise PathNameError('Invalid pathname, must start with \'/\')
-            pass
+            raise PathNameError('Invalid pathname, must start with \'/''')
 
         self.params = dict()
         self.query = dict() # make a dictionary for the query string

@@ -129,11 +129,6 @@ class TestRouter(unittest.TestCase):
 
     def test_use(self):
         router = serve.Router()
-        try:
-            router.use('', callback)
-            self.assertTrue(False)
-        except serve.Router.PathNameError:
-            self.assertTrue(True)
 
         try:
             router.use('/', callback)
@@ -237,9 +232,9 @@ class TestRouter(unittest.TestCase):
     def test_newMiddlewarePathMatch(self):
         router = serve.Router()
 
-        router.use('/def/', callback)
+        router.use('/def', callback)
         router.use('/', callback)
-        router.use('/abc/:val/', callback)
+        router.use('/abc/:val', callback)
 
         self.assertTrue(len(router.new_middleware_path_match('/'))==1)
 
