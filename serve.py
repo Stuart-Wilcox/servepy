@@ -116,14 +116,14 @@ class App():
                     body = '\n'.join(rawRequest[index:]) # add the entire body in one chunk, after putting the lines together
                     break
 
-            return Request(self.server.app, completeUrl, protocol, method, headers, body=body, params=None, cookies=None, baseUrl=None), path
+            return Request(self.server.app, completeUrl, protocol, method, headers, body=body, params=dict(), cookies=None, baseUrl=None), path
 
         def exec_callbacks(self, path, method, request, response):
             # get the callbacks in order
-            endware, middleware = self.server.app._routePath(path, method)
+            middleware, endware = self.server.app._routePath(path, method)
 
-            callbacks = [c for p,m,c in endware]
-            middleware_callbacks = [c for p, c in middleware]
+            # middleware (Path, function)
+            # endware (Path, method, callback)
 
             class Next:
                 def __init__(self, next=False):
@@ -138,35 +138,49 @@ class App():
                 def next(self):
                     self.n = True
 
-            if len(middleware_callbacks) != 0:
-                next = Next(True)
-                for index, callback in enumerate(middleware_callbacks):
-                    next.toggle()
+            # execute middleware first
 
-                    callback(request, response, next.next)
+            if len(middleware) != 0: # if there is any middleware then execute it
+
+                next = Next(True) #instantiate the next tracker
+
+                for path, function in middleware: # iterate over the middleware [ (Path, function) ]
+
+                    next.toggle()# toggle the next to get it ready for usage
+
+                    # set req.query and req.params
+                    request.query.update(path.query)
+                    request.params.update(path.params)
+
+                    function(request, response, next.next)
+
                     if response._sent:
+                        # the middleware called send on the response so we are done in exec_callbacks
                         return
                     if not next.n:
-                        raise Exception('Must use next()')
+                        # next() was never called so we can just kill this thread since it will hang forever
+                        # TODO test this
+                        threading.current_thread()._is_running = False
 
-            if len(callbacks) == 0:
-                # there is nothing to do
-                response.status(404).send("Cannot %s %s" % (method, path))
+            if len(endware) is 0:
+                # there is nothing to do so give the 404 error message
+                response.status(404).send("Cannot %s %s" % (method, path.path))
                 return
+            else:
+                path, method, callback = endware
 
-            # execute callbacks in order
-            for index, callback in enumerate(callbacks):
-                n = False
-                def next():
-                    n = True
-                try:
-                    callback(request, response)
-                except TypeError:
-                    callback(request, response, next)
+                callback(request, response)
+
+                if not response._sent:
+                    # the object was never sent so we can just kill this thread
+                    # TODO test this
+                    threading.current_thread()._is_running = False
 
 
-    # the implementation of the underlying socket server
     class Server(socketserver.TCPServer):
+        """
+        The implementation of the underlying socket server. This class is used to wrap the attribute of app (the parent/owner app)
+        """
         def __init__(self, server_address, RequestHandlerClass, app, bind_and_activate=True):
             # call super class constructor
             super().__init__(server_address, RequestHandlerClass, bind_and_activate)
@@ -280,7 +294,11 @@ class App():
 
     def use(self, callback, path='/', *args, **kwargs):
         # mounts the specified middleware function(s) at the specified path
-        self.routers.append(callback)
+
+        if type(callback) is Router: # the callback is a router
+            self.routers.append(callback)
+        else: # the callback is a function
+            self.routers[0].use(path, callback)
 
     def _getHostname(self):
         return self.__hostname
@@ -292,17 +310,21 @@ class App():
         return '127.0.0.1' # TODO
 
     def _routePath(self, path, method):
-        entries = []
-        middlewareEntries = []
-        for router in self.routers:
-            matches = router._pathMatch(path)
-            middlewareMatches = router._middlewarePathMatch(path)
-            if middlewareMatches is not None and len(middlewareMatches) != 0:
-                middlewareEntries.extend(middlewareMatches)
-            if matches is None or len(matches) == 0:
-                continue
-            entries.extend(matches)
-        return (entries, middlewareEntries)
+        """Given the path and http method, this function will attempt to find a single endware and any middleware prepared to handle it"""
+
+        endware = None # hold the endware that will be given to the handler
+        middleware = [] # the middleware that will be given to the handler
+
+        for router in self.routers: # iterate through the app's known routers
+
+            endware_path_match = router._endware_path_match(path, method) # get the endware that matches a path (Path, method, callback)
+            middleware_path_matches = router._middleware_path_match(path) # get the list of middlewares that match the path (Path, function)
+
+            middleware.extend(middleware_path_matches) # append all matching middleware
+
+            if endware is None:
+                endware = endware_path_match
+        return (middleware, endware)
 
 
 class Router():
@@ -311,36 +333,44 @@ class Router():
         pass
 
     def __init__(self):
-        self.subRouters = [] # list of subrouters of the form (Router, path)
-        self.pathPrefix = ''
-        self.paths = set() # all paths under this router for qucker lookup
-        self.middlewarePaths = set()
-        self.pathTable = list() # list of tuples of the form (path, method, callback) where callback is an ENDWARE function
-        self.middlewarePathTable = list() # list of tuples of the form (path, callback) where callback is a MIDDLEWARE function
+        self.sub_routers = [] # list of sub_routers of the form (Router, path)
+
+        self.path_prefix = '' # indicates the path that this router is mounted on relative to parent routers
+                              # when a parent mounts a new router it must manually set this attribute
+
+        self.endware_paths = set() # all endware paths under this router for fast lookup in path matching
+        self.middleware_paths = set() # all middleware paths under this router for fast lookup in path matching
+
+        self.endware_path_table = list() # list of tuples of the form (path, method, callback) where path is an array of the canonical path split by '/' and callback is an ENDWARE function
+        self.middleware_path_table = list() # list of tuples of the form (path, callback) where path is an array of the canonical path split by '/' and callback is a MIDDLEWARE function
 
     def all(self, path, callback):
-        self._add_endware(path, 'GET', callback)
-        self._add_endware(path, 'POST', callback)
-        self._add_endware(path, 'PUT', callback)
-        return self._add_endware(path, 'DELETE', callback)
+        # add endware under each of the available methods
+        self.__add_endware(path, 'GET', callback)
+        self.__add_endware(path, 'POST', callback)
+        self.__add_endware(path, 'PUT', callback)
+        return self.__add_endware(path, 'DELETE', callback)
 
     def get(self, path, callback):
-        return self._add_endware(path, 'GET', callback)
+        return self.__add_endware(path, 'GET', callback)
         return self
 
     def post(self, path, callback):
-        return self._add_endware(path, 'POST', callback)
+        return self.__add_endware(path, 'POST', callback)
 
     def put(self, path, callback):
-        return self._add_endware(path, 'PUT', callback)
+        return self.__add_endware(path, 'PUT', callback)
 
     def delete(self, path, callback):
-        return self._add_endware(path, 'DELETE', callback)
+        return self.__add_endware(path, 'DELETE', callback)
 
-    def _add_endware(self, path, method, callback):
-        path = self._validate_path(path)
-        self.paths.add(path)
-        self.pathTable.append( (self._buildpath(path), method, callback) )
+    def __add_endware(self, path, method, callback):
+        path = self.__validate_path(path) # format the path
+
+        path = Path(path) # make the path string into a Path object
+
+        self.endware_paths.add(path) # add the path to the endware path set
+        self.endware_path_table.append( (path, method, callback) ) # add the (path,method,callback) tuple
 
         return self
 
@@ -348,162 +378,182 @@ class Router():
         pass
 
     def route(self, path):
-        path = self._validate_path(path)
-        subRouter = Router()
-        subRouter.pathPrefix = path
-        self.subRouters.append( (subRouter, path) )
+        path = self.__validate_path(path) # format the path
 
-        return subRouter
+        path = Path(path)
+
+        sub_router = Router() # instantiate new child router
+        sub_router.path_prefix = path # indicate the child router is mounted under path
+
+        self.sub_routers.append( (sub_router, path) ) # mount the child router
+
+        return sub_router
 
     def use(self, path, function, *args, **kwargs):
-        path = self._validate_path(path)
-        self.middlewarePaths.add(path)
-        self.middlewarePathTable.append( (self._buildpath(path), function) )
+        path = self.__validate_path(path) # format the path
 
-    def _validate_path(self, path):
+        path = Path(path)
+
+        self.middleware_paths.add(path) # add the path to middleware path set
+        self.middleware_path_table.append(  (path,function) ) # add the (path,function) tuple
+
+    def __validate_path(self, path):
+        # paths must begin with a slash (this is enforced)
         if not path.startswith('/'):
             raise self.PathNameError("Path must start with character '/'")
+
+        # paths must end with a slash (for compatability with older code)
+        # but to allow users to omit the slash, just add one as needed
         if not path.endswith('/'):
             return path + '/'
+
         return path
 
-    def _buildpath(self, path):
-        # append the path prefix to the given path, remove slash in between
-        return self.pathPrefix[:-1] + path
+    def __get_endware_paths(self):
+        # method to get the endware paths on this router and all child routers recursively
 
-    def _getPaths(self):
-        if len(self.subRouters) is 0:
-            # this is a leaf
-            return self.paths
+        if len(self.sub_routers) is 0:
+            # there are no children (leaf) so just return the local endware paths
+            return self.endware_paths
+
         else:
-            # this is the root router
-            paths = []
-            for subRouterEntry in self.subRouters:
-                for path in subRouterEntry[0]._getPaths(): # subRouterEntry[0] is the router, [1] is the path
-                    paths.append(subRouterEntry[1]+path[1:])
-            paths.extend(self.paths)
-            return paths
+            # this router does have children so we must add all of their endware paths and append all of those to this router's endware paths
 
-    def _getMiddlewarePaths(self):
-        if len(self.subRouters) is 0:
-            # this is a leaf
-            return self.middlewarePaths
+            endware_paths = [] # hold the endware paths here
+
+            for sub_router in self.sub_routers: # iterate over children
+                # sub_router is a tuple of (Router, mount_path)
+                sub_router_mount_path = sub_router[1]
+
+                for endware_path in sub_router[0].__get_endware_paths(): # iterate over the child's paths (calling it's get_endware_paths() function in a recursive manner)
+                    # endware_path is a Path
+
+                    # add the sub router mount path to the start and remove the '/' in the beginning (so there isn't a '//'')
+                    endware_path.path = sub_router_mount_path + endware_path.path[1:]
+
+                    # append the path to the paths that get returned
+                    endware_paths.append(endware_path)
+
+            # after getting all the child endware_paths to paths, add this router's endware_paths
+            endware_paths.extend(self.endware_paths)
+
+            return endware_paths
+
+    def __get_middleware_paths(self):
+        # method to get the middleware paths on this router and all child routers recursively
+
+        if len(self.sub_routers) is 0:
+            # there are no children (leaf) so just return the local middleware paths
+            return self.middleware_paths
+
         else:
-            # this is the root router
-            paths = []
-            for subRouterEntry in self.subRouters:
-                for path in subRouterEntry[0]._getMiddlewarePaths(): # subRouterEntry[0] is the router, [1] is the path
-                    paths.append(subRouterEntry[1]+path[1:])
-            paths.extend(self.middlewarePaths)
-            return paths
+            # this router does have children so we must add all of their middleware paths and append all of those to this router's middleware paths
 
-    def _getPathTable(self):
-        if len(self.subRouters) is 0:
-            return self.pathTable
+            middleware_paths = [] # hold the middleware paths here
+
+            for sub_router in self.sub_routers: # iterate over children
+                #sub_router is a tuple of (Router, mount_path)
+                sub_router_mount_path = sub_router[1]
+
+                for middleware_path in sub_router[0].__get_middleware_paths(): # iterate over middleware paths in the sub router (recursively)
+                    # middleare_path is a Path
+
+                    # remove the '/' in the beginning (so there isn't a '//'')
+                    middleware_path.path = sub_router_mount_path + middleware_path.path[1:]
+
+                    # append the path to the paths that get returned
+                    middleware_paths.append(middleware_path)
+
+            middleware_paths.extend(self.middleware_paths) # add the current router's middleware paths
+
+            return middleware_paths
+
+    def _get_endware_path_table(self):
+        # method to get the endware path table recursively
+
+        if len(self.sub_routers) is 0:
+            # this router has no children (leaf) so just return the path table
+            return self.endware_path_table
+
         else:
-            pathTable = []
-            for subRouterEntry in self.subRouters:
-                for pathTableEntry in subRouterEntry[0]._getPathTable():
-                    pathTable.append( (pathTableEntry[0], pathTableEntry[1], pathTableEntry[2]) )
+            # this router does have children so we must add all the endware path table entries to this router's entries
 
-            pathTable.extend(self.pathTable)
-        return pathTable
+            endware_path_tables = [] # hold the endware path table entries
 
-    def _getMiddlewarePathTable(self):
-        if len(self.subRouters) is 0:
-            return self.middlewarePathTable
+            for sub_router in self.sub_routers: # iterate over sub routers
+                #sub_router is a tuple of (Router, mount_path)
+                sub_router_mount_path = sub_router[1].path_str()
+
+                for endware_path_table in sub_router[0]._get_endware_path_table():
+                    # endware_path_table is a tuple (path, method, callback)
+
+                    endware_path = endware_path_table[0]
+                    endware_method = endware_path_table[1]
+                    endware_callback = endware_path_table[2]
+
+                    endware_path.path = sub_router_mount_path + endware_path.path_str(remove_leading_slash=True) # put the sub router mount path in front of the path and remove the extra '/'
+
+                    endware_path_tables.append( (endware_path, endware_method, endware_callback) ) # add the child path table entries to the tables
+
+            endware_path_tables.extend(self.endware_path_table) # add this router's path tables to the tables
+
+        return endware_path_tables
+
+    def _get_middleware_path_table(self):
+        # method to get the middleware path table recursively
+
+        if len(self.sub_routers) is 0:
+            # this router has no children (leaf) so just return the path table
+            return self.middleware_path_table
+
         else:
-            middlewarePathTable = []
-            for subRouterEntry in self.subRouters:
-                for middlewarePathTableEntry in subRouterEntry[0]._getMiddlewarePathTable():
-                    middlewarePathTable.append( (middlewarePathTableEntry[0], middlewarePathTableEntry[1]) )
-            middlewarePathTable.extend(self.middlewarePathTable)
-        return middlewarePathTable
+            # this router does have children so we must add all the middleware path table entries to this router's entries
 
-    # TODO: extend to allow path params
-    def _pathMatch(self, path):
-        path = path.split('?')[0]+'/' # get rid of query params
-        path = path.replace('//', '/') # remove any errors in previous step
-        path = path.split('/')[1:-1] # get rid of 'http:/' and the trailing '/'
-        paths = self._getPaths() # get paths in a recursive manner
-        candidate_paths = [] # holder for the candidates
+            middleware_path_tables = [] # hold the middleware path endware_path_tables
 
-        for p in paths:
-            # remove everything before first '/' and after last '/'
-            p = p.split('/')[1:-1]
-            p_str = '/'.join(p)
-            p_str = '/'+p_str+'/'
-            p_str = p_str.replace('//', '/') # build p_str into a string version of the path name
+            for sub_router in self.sub_routers: # iterate over sub routers
+                #sub_router is a tuple of (Router, mount_path)
+                sub_router_mount_path = sub_router[1]
 
-            if p == path:
-                # p in _getPaths() matches path
+                for middleware_path_table in sub_router[0]._get_middleware_path_table():
+                    # middleware_path_table is a tuple (path, callback)
 
-                # find the entries in the pathTable where the path matches the candidate (there may be multiple)
-                for entry in self._getPathTable():
-                    if entry[0] == p_str:
-                        candidate_paths.append(entry)
+                    middleware_path = middleware_path_table[0]
+                    middleware_callback = middleware_path_table[1]
 
-                if len(candidate_paths) == 0:
-                    for entry in self._getPathTable():
-                        # check paths to look for wildcards via ':' delimeter
-                        pass
+                    middleware_path.path = sub_router_mount_path + middleware_path.path_str(remove_leading_slash=True) # put the sub router path in the start and remove the extra '/'
 
-        return candidate_paths
+                    middleware_path_tables.append( (middleware_path, middleware_callback) ) # add the child path table entries to the tables
 
-    def new_endware_path_match(self, path):
-        paths = self._getPaths()
-        candidate = None
+            middleware_path_tables.extend(self.middleware_path_table) # add this router's path tables to the tables
 
-        for p in paths:
-            p = Path(p)
-            if p.match(Path(path)):
-                candidate = p
+        return middleware_path_tables
 
+    def _endware_path_match(self, path, method):
+        candidate = None # only one possible candidate
+
+        # TODO: make sure the path matches look for a literal match before a path param match
+
+        for endware_path_table_entry in self._get_endware_path_table(): # iterate over endware path table
+            endware_path = endware_path_table_entry[0]
+            endware_method = endware_path_table_entry[1]
+            endware_callback = endware_path_table_entry[2]
+
+            if endware_path.match(Path(path)) and endware_method == method: # use Path.match() to test for matching
+                candidate = (endware_path, endware_method, endware_callback) # set the candidate
+                break # exit from the loop once we get one
         return candidate
 
+    def _middleware_path_match(self, path):
+        candidates = [] # list of possible candidates
 
+        for middleware_path, middleware_function in self._get_middleware_path_table(): # get the endware paths from the recursive method
 
-    # TODO: extend to allow path params
-    def _middlewarePathMatch(self, path):
-        path = path.split('?')[0]+'/' # get rid of query params
-        path = path.replace('//', '/') # remove any errors in previous step
-        path = path.split('/')[1:-1] # get rid of 'http:/' and the trailing '/'
-        paths = self._getMiddlewarePaths() # get paths in a recursive manner
-        candidate_paths = [] # holder for the candidates
+            if middleware_path.match(Path(path), middleware=True): # use Path.macth() with the middleware flag to test for matching
+                candidates.append( (middleware_path, middleware_function) ) # append to the candidates
 
-        for p in paths:
-            # remove everything before first '/' and after last '/'
-            p = p.split('/')[1:-1]
-            p_str = '/'.join(p)
-            p_str = '/'+p_str+'/'
-            p_str = p_str.replace('//', '/')
-
-            pathSubset = True
-
-            if len(p) <= len(path):
-                for index, section in enumerate(p):
-                    if section != path[index]:
-                        pathSubset = False
-
-            if pathSubset:
-                for entry in self._getMiddlewarePathTable():
-                    availPathSet = entry[0]
-                    pathSet = p_str
-
-                    if availPathSet <= pathSet:
-                        candidate_paths.append(entry)
-
-        return candidate_paths
-
-    def new_middleware_path_match(self, path):
-        paths = self._getMiddlewarePaths()
-        candidates = []
-
-        for p in paths:
-            p = Path(p)
-            if p.match(Path(path), middleware=True):
-                candidates.append(p)
         return candidates
+
 
 class Path():
     class PathNameError(Exception):
@@ -517,6 +567,8 @@ class Path():
 
         if not path.startswith('/'):
             raise PathNameError('Invalid pathname, must start with \'/''')
+        if not path.endswith('/') and path != '/':
+            path = path + '/'
 
         self.params = dict()
         self.query = dict() # make a dictionary for the query string
@@ -531,6 +583,11 @@ class Path():
 
         self.path = path.split('/')[1:-1] # split the path by slashes and get rid of the first and last since they are always blank
 
+    def path_str(self, remove_leading_slash=False):
+        if remove_leading_slash:
+            return '/'.join(self.path)[1:]
+        else:
+            return '/'.join(self.path)
 
     def match(self, path, middleware=False):
         # path can be a string or a Path object
@@ -543,7 +600,7 @@ class Path():
         # unless middleware, the paths must have the same length to match
         if not middleware:
             if len(expected) != len(actual):
-                return False
+                return False]
 
         for index, e in enumerate(expected):
             # iterate over pieces of url. if they match, continue, if there is a path param deal with it. otherwise they dont match
@@ -559,8 +616,21 @@ class Path():
                 return False
         return True
 
+    def __eq__(self, other):
+        if type(other) is Path:
+            return self.path == other.path
+        else:
+            return False
+
+    def __hash__(self):
+        return hash('/'.join(self.path))
+
+    def __str__(self):
+        return '/'.join(self.path)
+
+
 class Request():
-    def __init__(self, app, completeUrl, protocol, method, headers=dict(), body=None, params=None, cookies={}, baseUrl=None, path=None):
+    def __init__(self, app, completeUrl, protocol, method, headers=dict(), body=None, params={}, cookies={}, baseUrl=None, path=None):
         self.app = app
         self.baseUrl = baseUrl
         self.body = body
@@ -622,6 +692,7 @@ class Request():
         for headerName in self.headers:
             headerString+='%s:%s\n'%(headerName, self.headers[headerName])
         return "%s %s %s\n%s\n\n%s" % (self.method, self.originalUrl, self.protocol, headerString, self.body)
+
 
 class Response():
     def __init__(self, app):
@@ -792,9 +863,8 @@ if __name__=='__main__':
         res.append('Content-Type', 'application/json').status(200).send('{"success":"true"}')
 
     app = App()
-
     router = Router()
     router.use('/', middleware_func_1)
-    router.route('/').get('/', dummy_func_1).get('/working/', dummy_func_2)
+    router.get('/', dummy_func_1).get('/working', dummy_func_2)
     app.use(router)
     app.listen(port=8080, hostname='localhost')

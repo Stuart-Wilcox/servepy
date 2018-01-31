@@ -218,29 +218,9 @@ class TestRouter(unittest.TestCase):
 
         self.assertFalse(len(router._pathMatch('/abc/def?var=value')) == 0)
 
-    def test_newPathMatch(self):
-        router = serve.Router()
 
-        router.route('/abc/').get('/def/', callback).post('/:DEF/', callback)
 
-        self.assertTrue(not router.new_endware_path_match('/'))
 
-        self.assertTrue(router.new_endware_path_match('/abc/def/'))
-
-        self.assertTrue(router.new_endware_path_match('/abc/DEF/'))
-
-    def test_newMiddlewarePathMatch(self):
-        router = serve.Router()
-
-        router.use('/def', callback)
-        router.use('/', callback)
-        router.use('/abc/:val', callback)
-
-        self.assertTrue(len(router.new_middleware_path_match('/'))==1)
-
-        self.assertTrue(len(router.new_middleware_path_match('/abc/'))==1)
-
-        self.assertTrue(len(router.new_middleware_path_match('/abc/123/'))==2)
 
 class TestRequest(unittest.TestCase):
     def test_creation(self):
