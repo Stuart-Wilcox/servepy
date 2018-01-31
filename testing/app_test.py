@@ -1,6 +1,7 @@
-import importlib
 import unittest
-from serve import App, Router, Request, Response
+from src.serve import App, Router
+
+print('\n***APP TEST***\n')
 
 def middleware_1(req, res, next):
     pass
@@ -110,26 +111,7 @@ class TestApp(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIs(type(result), Router)
 
-class TestRouter(unittest.TestCase):
-    def test_init(self):
-        router = Router()
-
-        self.assertIsNotNone(router)
-
-    def test_all(self):
-        pass
-    def test_get(self):
-        pass
-    def test_post(self):
-        pass
-    def test_put(self):
-        pass
-    def test_delete(self):
-        pass
-    def test_route(self):
-        pass
     def test_use(self):
         pass
 
-if __name__ == '__main__':
-    unittest.main()
+unittest.main()

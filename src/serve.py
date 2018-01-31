@@ -1,53 +1,9 @@
-# python lib emulating Expressjs lib
-import os
+# python lib mimicing Expressjs lib
+import os, sys
 import socketserver
 import traceback
 import threading
 
-class express():
-    def __init__(self):
-        pass
-    def json(self, options=None):
-        # options:{
-        #  inflate: Boolean=true,
-        #  limit: Mixed='100kb',
-        #  reviver: Function=None,
-        #  strict: Boolean=true,
-        #  type: Mixed='application/json',
-        #  verify: Function=None
-        # }
-        pass
-    def static(self, root, options=None):
-        # options:{
-        #  dotfiles: String='ignore',
-        #  etag: Boolean=true,
-        #  extensions: Mized=false
-        #  fallthrough: Boolean=true,
-        #  immutable: Boolean=false
-        #  index: Mized="index.html"
-        #  lastModified: Boolean=true
-        #  maxAge: Number=0
-        #  redirect: Boolean=true,
-        #  setHeaders: Function=None
-        # }
-        pass
-    def Router(self, options=None):
-        # options:{
-        #  caseSensitive: Boolean=false,
-        #  mergeParams: Boolean=false
-        #  strict: Boolean=false
-        # }
-        pass
-    def urlencoded(self, options=None):
-        # options:{
-        #  extended: Boolean=true,
-        #  inflate: Boolean=true,
-        #  limit: Mixed='100kb'
-        #  parameterLimit: Number=1000
-        #  type: Mized='application/x-www-form-urlencoded',
-        #  verify: Function=None
-        # }
-        pass
 
 class App():
 
@@ -127,41 +83,44 @@ class App():
             # endware (Path, method, callback)
 
             class __Next:
-                def __init__(self, next=False):
-                    self.n = next
-                def false(self):
-                    self.n = False
-                def toggle(self):
-                    if self.n:
-                        self.n = False
-                    else:
-                        self.n = True
+                def __init__(self):
+                    self.n = threading.Event()
+
                 def next(self):
-                    self.n = True
+                    self.n.set()
+
+                def wait(self):
+                    try:
+                        val = self.n.wait()
+                    except Exception:
+                        print('EXEC')
+                    self.n.clear()
+                    return val
+
+            class __TimeoutException(Exception):
+                pass
 
             # execute middleware first
 
             if len(middleware) != 0: # if there is any middleware then execute it
 
-                next = __Next(True) #instantiate the next tracker
+                next = __Next() #instantiate the next tracker
 
-                for middleware_path, function in middleware: # iterate over the middleware [ (Path, function) ]
-
-                    next.toggle()# toggle the next to get it ready for usage
+                for path, function in middleware: # iterate over the middleware [ (Path, function) ]
 
                     # set req.query and req.params
                     request.query.update(path.query)
                     request.params.update(path.params)
 
-                    function(request, response, next.next)
+                    try:
+                        function(request, response, next.next)
+                    except TypeError:
+                        function(request, response)
+
+                    next.wait()
 
                     if response._sent:
-                        # the middleware called send on the response so we are done in exec_callbacks
                         return
-                    if not next.n:
-                        # next() was never called so we can just kill this thread since it will hang forever
-                        # TODO test this
-                        threading.current_thread()._is_running = False
 
             if endware is None:
                 # there is nothing to do so give the 404 error message
@@ -343,7 +302,7 @@ class Router():
     def __add_endware(self, path, method, callback):
         path = self.__validate_path(path) # format the path
 
-        path = Path(path) # make the path string into a Path object
+        path = _Path(path) # make the path string into a Path object
 
         self.endware_paths.add(path) # add the path to the endware path set
         self.endware_path_table.append( (path, method, callback) ) # add the (path,method,callback) tuple
@@ -357,7 +316,7 @@ class Router():
         path = self.__validate_path(path) # format the path
 
         if path != '/':
-            path = Path(path)
+            path = _Path(path)
 
             sub_router = Router() # instantiate new child router
             sub_router.path_prefix = path # indicate the child router is mounted under path
@@ -371,7 +330,7 @@ class Router():
     def use(self, path, function):
         path = self.__validate_path(path) # format the path
 
-        path = Path(path)
+        path = _Path(path)
 
         self.middleware_paths.add(path) # add the path to middleware path set
         self.middleware_path_table.append(  (path,function) ) # add the (path,function) tuple
@@ -388,7 +347,7 @@ class Router():
 
         return path
 
-    def get_endware_path_table(self):
+    def __get_endware_path_table(self):
         # method to get the endware path table recursively
 
         if len(self.__sub_routers) is 0:
@@ -405,7 +364,7 @@ class Router():
                 sub_router_mount_path = sub_router[1]
                 #print(sub_router_mount_path)
 
-                for endware_path_table in sub_router[0].get_endware_path_table():
+                for endware_path_table in sub_router[0].__get_endware_path_table():
                     # endware_path_table is a tuple (path, method, callback)
 
                     endware_path = endware_path_table[0]
@@ -415,7 +374,7 @@ class Router():
                     # this line is resetting the enware_path value
                     #endware_path.path = sub_router_mount_path.path + endware_path.path
 
-                    sub_router_endware_path = Path('/')
+                    sub_router_endware_path = _Path('/')
                     sub_router_endware_path.path = sub_router_mount_path.path + endware_path.path
 
                     endware_path_tables.append( (sub_router_endware_path, endware_method, endware_callback) ) # add the child path table entries to the tables
@@ -459,12 +418,12 @@ class Router():
 
         # TODO: make sure the path matches look for a literal match before a path param match
 
-        for endware_path_table_entry in self.get_endware_path_table(): # iterate over endware path table
+        for endware_path_table_entry in self.__get_endware_path_table(): # iterate over endware path table
             endware_path = endware_path_table_entry[0]
             endware_method = endware_path_table_entry[1]
             endware_callback = endware_path_table_entry[2]
 
-            if endware_path.match(Path(path)) and endware_method == method: # use Path.match() to test for matching
+            if endware_path.match(_Path(path)) and endware_method == method: # use Path.match() to test for matching
                 candidate = (endware_path, endware_method, endware_callback) # set the candidate
                 break # exit from the loop once we get one
         return candidate
@@ -474,13 +433,13 @@ class Router():
 
         for middleware_path, middleware_function in self.__get_middleware_path_table(): # get the endware paths from the recursive method
 
-            if middleware_path.match(Path(path), middleware=True): # use Path.macth() with the middleware flag to test for matching
+            if middleware_path.match(_Path(path), middleware=True): # use Path.macth() with the middleware flag to test for matching
                 candidates.append( (middleware_path, middleware_function) ) # append to the candidates
 
         return candidates
 
 
-class Path():
+class _Path():
     class PathNameError(Exception):
         pass
 
@@ -544,7 +503,7 @@ class Path():
         return True
 
     def __eq__(self, other):
-        if type(other) is Path:
+        if type(other) is _Path:
             return self.path == other.path
         else:
             return False
@@ -730,7 +689,9 @@ class Response():
         pass
 
     def set(self, field, value=None):
-        pass
+        self.__headers[field.upper()] = value
+
+        return self
 
     def status(self, code=None):
         if code is not None:
