@@ -3,6 +3,9 @@
 Servepy is an HTTP server framework modelled after the Express.js library for Node.js
 
 ## Contents
+[Installation](#installation)
+- [Pip](#pip)
+
 [Usage](#usage)
 - [Simple Usage](#simple-usage)
 - [Sample](#sample)
@@ -12,6 +15,20 @@ Servepy is an HTTP server framework modelled after the Express.js library for No
 - [Router](#router)
 - [Request](#request)
 - [Response](#response)
+
+## Installation
+The fastest and easiest way to install servepy is using [pip](https://pip.pypa.io/en/stable/). If you don't have pip, you can get it [here](https://pip.pypa.io/en/stable/installing/), but if you installed python properly you should alread have it. Before continuing, make sure to update pip by running ```pip install --upgrade pip``` for Windows and ```sudo pip3 install --upgrade pip``` for Linux.
+
+### Pip
+This is the recommended way to get servepy.
+
+Windows ```pip install servepy```
+Linux ```sudo -H pip3 install servepy```
+
+It's that easy, and now you can simply use ```import servepy```.
+
+*NOTE: If you get warnings about failing to build the wheel file, just ignore them it should still work.*
+
 
 ## Usage
 ### Simple Usage
@@ -52,7 +69,7 @@ In your web browser (or if you prefer, a REST API client like Postman or Insomni
 To see a working example, look at what is in the [sample directory](./sample). In here, there are two files: ```home.html``` and ```server.py```. The latter is the server code and the former is a very simple html file to render in a browser.
 
 To run the sample, in a temrinal (command prompt) navigate to the root of the servepy directory and simply execute sample. Windows: ```sample.bat``` <br/>
-Unix: ```sample.sh```
+Linux: ```sample.sh```
 
 NOTE: Linux users will most likely need to give execution permission to ```sample.sh```. To do so, in the project directory use the command ```$ sudo chmod +x sample.sh```.
 

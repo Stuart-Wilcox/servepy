@@ -1,4 +1,4 @@
-# python lib mimicing Expressjs lib
+# python lib mimicking Express.js
 import os, sys
 import socketserver
 import traceback
