@@ -112,6 +112,8 @@ class App():
                     request.query.update(path.query)
                     request.params.update(path.params)
 
+                    request.route = path.path_str()
+
                     try:
                         function(request, response, next.next)
                     except TypeError:
@@ -132,6 +134,8 @@ class App():
                 # set req.query and req.params
                 request.query.update(path.query)
                 request.params.update(path.params)
+
+                request.route = path.path_str()
 
                 callback(request, response)
 
@@ -308,9 +312,6 @@ class Router():
         self.endware_path_table.append( (path, method, callback) ) # add the (path,method,callback) tuple
 
         return self
-
-    def param(self, name, callback):
-        pass
 
     def route(self, path):
         path = self.__validate_path(path) # format the path
@@ -516,9 +517,8 @@ class _Path():
 
 
 class Request():
-    def __init__(self, app, completeUrl, protocol, method, headers=dict(), body=None, params={}, cookies={}, baseUrl=None, path=None):
+    def __init__(self, app, completeUrl, protocol, method, headers=dict(), body=None, params={}, cookies={}, path=None, baseUrl=None, route=None):
         self.app = app
-        self.baseUrl = baseUrl
         self.body = body
         self.cookies = cookies
         self.fresh = None
@@ -541,9 +541,8 @@ class Request():
         else:
             self.query = {}
 
-        self.route = None
-        self.secure = None
-        self.signedCookies = None
+        self.route = route
+
         if 'Cache-Control' in headers:
             self.stale = headers['Cache-Control']=='No-Cache'
             self.fresh = not self.stale
@@ -551,27 +550,27 @@ class Request():
             self.stale = False
             self.fresh = True
         self.subdomains = None
-        self.xhr = None
+        try:
+            self.xhr = self.headers['X-Requested-With'.upper()] == 'XMLHttpRequest'
+        except KeyError:
+            self.xhr = False
 
     def accepts(self, types):
         if 'Accept' not in self.headers:
             return False
         return types in self.headers['Accept'].split(',')
 
-    def acceptsLanguages(self, lang):
-        pass
-
     def get(self, field):
-        return self.getattr(field)
+        try:
+            return self.headers[field.upper()]
+        except KeyError:
+            return None
 
-    def isType(self, type):
+    def is_type(self, type):
         pass
 
     def param(self, name, defaultValue=None):
         raise Error('Deprecated. Use attribute params instead.')
-
-    def range(self, size, options=None):
-        pass
 
     def __str__(self):
         headerString = ''
@@ -581,10 +580,9 @@ class Request():
 
 
 class Response():
-    def __init__(self, app):
+    def __init__(self, app=None):
         self.app = app
-        self.headersSent = None
-        self.locals = None
+        self.headers_sent = None
 
         self.__headers = {'Content-Type'.upper():'text/plain'}
         self.__body = ''
@@ -629,21 +627,12 @@ class Response():
             self.set('Content-Disposition', 'attachment; filename=%s'%filename)
         return self
 
-
     def cookie(self, name, value, options=None):
         pass
 
     def clearCookie(self, name, options=None):
         pass
 
-    def download(self, path, filename=None, options=None, fn=None):
-        pass
-
-    def end(self, data=None, encoding=None):
-        pass
-
-    def format(self, object):
-        pass
 
     def get(self, field):
         field = field.upper()
@@ -654,6 +643,7 @@ class Response():
 
     def json(self, body=None):
         self.headers['Content-Type'] = 'application/json'.upper()
+        self.headers_sent = True
         if body is not None:
             #convert body to json
             jsonBody = body
@@ -661,32 +651,13 @@ class Response():
         else:
             self.send('{}')
 
-    def jsonp(self, body=None):
-        pass
-
-    def links(self, links):
-        pass
-
-    def location(self, path):
-        pass
-
-    def redirect(self, path, status=None):
-        pass
-
-    def render(self, view, locals=None, callback=None):
-        pass
-
     def send(self, body=None):
         self._body = body
-        self.append('Content-Length'.upper(), len(bytes(body, 'utf-8')))
-        self.append('Connection'.upper(), 'close')
+        self.set('Content-Length'.upper(), len(bytes(body, 'utf-8')))
+        self.set('Connection'.upper(), 'close')
+        self.headers_sent = True
         self._sent = True
 
-    def sendFile(self, path, options=None, fn=None):
-        pass
-
-    def sendStatus(self, statusCode):
-        pass
 
     def set(self, field, value=None):
         self.__headers[field.upper()] = value
@@ -703,10 +674,11 @@ class Response():
             return self.__status
 
     def type(self, type):
-        pass
+        if '/' in type:
+            self.headers['Content-Type'.upper()] = type
+        return self
 
-    def vary(self, field):
-        pass
+
 
     def __str__(self):
         headerString = ''

@@ -3,6 +3,9 @@ import os
 
 if __name__ == '__main__':
 
+    def listening():
+        print("App is listening at localhost on port 8080")
+
     def serve_homepage(req, res):
         homepage = open(os.path.join(os.path.dirname(__file__), 'home.html'), 'r').read()
 
@@ -20,4 +23,4 @@ if __name__ == '__main__':
     app.use(router)
     app.use(log_incoming_request)
 
-    app.listen(port=8080)
+    app.listen(port=8080, callback=listening)
