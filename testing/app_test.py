@@ -112,6 +112,23 @@ class TestApp(unittest.TestCase):
         self.assertIs(type(result), Router)
 
     def test_use(self):
-        pass
+        app = App()
+
+        app.use(middleware_1, path='/')
+
+        router = Router()
+
+        router.use('/', middleware_2)
+
+        app.use(router, path='/abc')
+
+        self.assertIsNotNone(app._route_path('/', 'GET')[0])
+
+        self.assertEqual(len(app._route_path('/', 'GET')[0]), 2) # two elements in the middleware
+        self.assertEqual(len(app._route_path('/', 'GET')[1]), 0) # no items in the endware
+
+        self.assertTrue(middleware_1 in app._route_path('/', 'GET')[0][0]) # middleware_1 in the first tuple in middleware
+
+        self.assertTrue(middleware_2 in app._route_path('/', 'GET')[0][1]) # middleware_2 in the second tuple in middleware
 
 unittest.main()
