@@ -125,7 +125,7 @@ class TestApp(unittest.TestCase):
         self.assertIsNotNone(app._route_path('/', 'GET')[0])
 
         self.assertEqual(len(app._route_path('/', 'GET')[0]), 2) # two elements in the middleware
-        self.assertEqual(len(app._route_path('/', 'GET')[1]), 0) # no items in the endware
+        self.assertIsNone(app._route_path('/', 'GET')[1]) # no items in the endware
 
         self.assertTrue(middleware_1 in app._route_path('/', 'GET')[0][0]) # middleware_1 in the first tuple in middleware
 
