@@ -436,7 +436,7 @@ class Router():
 
             if middleware_path.match(_Path(path), middleware=True): # use Path.macth() with the middleware flag to test for matching
                 candidates.append( (middleware_path, middleware_function) ) # append to the candidates
-
+                
         return candidates
 
 
@@ -460,7 +460,11 @@ class _Path():
 
         if '?' in path:
             query_string = path.split('?')[1] # split by the question mark and take the second half
-            path = path.split('?')[0] + '/' # split by the question mark and set the path to the first half and making ure to append a trailing slash
+            path = path.split('?')[0] + '/' # split by the question mark and set the path to the first half and making sure to append a trailing slash
+
+            # if there is a trailing slash (there should always be but whatever) then remove it because it makes no sense to have it in the query string
+            if query_string.endswith('/'):
+                query_string = query_string[:-1]
 
             for q in query_string.split('&'):
                 # iterate through the query parameters and populate the dictionary, delimeted by '&'
@@ -477,12 +481,20 @@ class _Path():
             return '/'.join(self.path)
 
     def match(self, path, middleware=False):
+
+        expected = self.path # pull the path string out of self.path
+
         # path can be a string or a Path object
         if type(path) is str:
-            actual = path
+            # if the path is a string then format it properly
+            actual = _Path(path).path
+            self.query = _Path(path).query
         else:
+            # if the path is a _Path then just pull out the path
             actual = path.path
-        expected = self.path
+            self.query = path.query
+
+
 
         # unless middleware, the paths must have the same length to match
         if not middleware:

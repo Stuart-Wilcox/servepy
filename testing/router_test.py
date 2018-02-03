@@ -55,8 +55,8 @@ class TestRouter(unittest.TestCase):
         self.assertEqual(router._endware_path_match('/abc', 'GET')[2], endware_2)
         self.assertEqual(router._endware_path_match('/abc/123', 'GET')[2], endware_1)
         self.assertEqual(router._endware_path_match('/abc/123', 'GET')[0].params['val'], '123')
-        # self.assertEqual(router._endware_path_match('/abc/123?val=123', 'GET')[0].query['val'], '123')
-        print(router._endware_path_match('/abc/123?val=123', 'GET')[0].query)
+        self.assertEqual(router._endware_path_match('/abc/123?val=123', 'GET')[0].query['val'], '123')
+        # print(router._endware_path_match('/abc/123?val=123', 'GET')[0].query)
 
 
     def test_post(self):
