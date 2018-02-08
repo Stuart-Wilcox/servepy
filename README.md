@@ -120,7 +120,8 @@ This method is similar to ```app.use()```. A simple example and use case is desc
 ###### app
 This property holds a reference to the instance of the Express application that is using the middleware.
 ###### body
-Contains an object representing the data submitted in the request body (if there is one). By default, it is ```None``` and will be automatically populated if a body is present on a request.
+Contains an object representing the data submitted in the request body (if there is one). By default, it is ```None``` and will be automatically populated if a body is not present on a request.
+**NOTE: Support only exists for parsing bodies of the following Content-Type: text/plain, application/json, application/x-www-form-urlencoded**
 ###### cookies
 **NOTE: Not implemented yet**<br/>
 Contains the cookies sent by the request. If there are no cookies, it defaults to ```None```.
@@ -192,7 +193,6 @@ Clears the cookie specified by name. For details about the options object, see `
 ###### get(field)
 Returns the HTTP response header specified by field. The match is case-insensitive.
 ###### json([body])
-**NOTE: Not properly implemented yet. You can use it if you send it with body set as a proper JSON string**<br/>
 Sends a JSON response. This method sends a response (with the correct content-type) that is the parameter converted to a JSON string.
 
 The parameter can be any JSON type, meaning the built in types (```boolean, int, float, complex, list, tuple, dict, str, bytes, ... etc.```), and you can also use it to convert other values to JSON, such as ```None```(although this is technically not valid JSON).
@@ -207,4 +207,4 @@ Sets the response’s HTTP header ```field``` to ```value```. To set multiple fi
 ###### status(code)
 Sets the HTTP status for the response.
 ###### type(type)
-Sets the ```Content-Type``` HTTP header to the MIME type as determined by the specified type. If type contains the “/” character, then it sets the ```Content-Type``` to type.
+Sets the ```Content-Type``` HTTP header to the MIME type as determined by the specified type.
