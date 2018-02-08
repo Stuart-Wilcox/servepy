@@ -3,6 +3,8 @@ import os, sys
 import socketserver
 import traceback
 import threading
+import json
+import urllib.parse
 
 
 class App():
@@ -25,17 +27,20 @@ class App():
             # wrap all logic in a try - except so that if things go wrong, it sends a default HTTP 500 message
             try:
                 # get the request as a request object (see below) and the path as a string
-                request, path = self.__parseHttp__(self.data)
+                http = _Http(self.data, self.server)
+                req = http.request
+                path = http.path
+
 
                 # object to hold the response that will be sent to the client
-                response = Response(None)
+                res = Response(None)
 
                 # execute the registered middleware and handler callbacks
-                self.exec_callbacks(path, request.method, request, response)
+                self.exec_callbacks(path, req, res)
 
                 # use the socket to send the response back to the client
                 self.request.send(
-                    bytes(response.__str__(),'utf-8')
+                    bytes(res.__str__(),'utf-8')
                 )
             except Exception:
                 # if something goes wrong, the default behaviour is below (send a HTTP 500)
@@ -44,40 +49,10 @@ class App():
                 # use the socket to send the error response
                 self.request.send(bytes("HTTP/1.1 500 Internal Server Error\nContent-Type:text/plain\n\nServer encountered an error. Please check logs", 'utf-8'))
 
-        # TODO move this to its own class
-        def __parseHttp__(self, rawRequest):
-            # get protocol, method, and path
-            httpLine = rawRequest.replace('\r', '').split('\n')[0].split(' ')
-            method, path, protocol = httpLine
-            completeUrl = protocol.split('/')[0].lower() + '://' + self.server.app._get_hostname() + ':' + str(self.server.app._get_port()) + path
 
-            rawRequest = rawRequest.replace('\r', '').split('\n')[1:] # format line endings then split by them. Remove the http header line
-
-            headers = dict()
-            section = 0
-            body = None
-
-            # iterate through lines of the request
-            for index, line in enumerate(rawRequest):
-
-                if section == 0:
-                    # headers
-                    line = line.split(':', 1) # split the header line by name:value pairs
-                    if line[0] is None or line[0]=='':
-                        # the is a newline after the headers but before the body, so change sections from headers to body
-                        section += 1
-                        continue
-                    headers[line[0]] = line[1] # add the entry to the headers dictionary
-                else:
-                    #body
-                    body = '\n'.join(rawRequest[index:]) # add the entire body in one chunk, after putting the lines together
-                    break
-
-            return Request(self.server.app, completeUrl, protocol, method, headers, body=body, params=dict(), cookies=None, baseUrl=None), path
-
-        def exec_callbacks(self, path, method, request, response):
+        def exec_callbacks(self, path, request, response):
             # get the callbacks in order
-            middleware, endware = self.server.app._route_path(path, method)
+            middleware, endware = self.server.app._route_path(path, request.method)
 
             # middleware (Path, function)
             # endware (Path, method, callback)
@@ -126,7 +101,7 @@ class App():
 
             if endware is None:
                 # there is nothing to do so give the 404 error message
-                response.status(404).send("Cannot %s %s" % (method, path))
+                response.status(404).send("Cannot %s %s" % (request.method, path))
                 return
             else:
                 path, method, callback = endware
@@ -436,7 +411,7 @@ class Router():
 
             if middleware_path.match(_Path(path), middleware=True): # use Path.macth() with the middleware flag to test for matching
                 candidates.append( (middleware_path, middleware_function) ) # append to the candidates
-                
+
         return candidates
 
 
@@ -526,6 +501,70 @@ class _Path():
 
     def __str__(self):
         return '/'.join(self.path)
+
+class _Http():
+    def __init__(self, http_str, server):
+        # get protocol, method, and path
+
+        try:
+            http_line = http_str.replace('\r', '').split('\n')[0].split(' ') # format line endings and split by them, then split the first line by spaces
+            if len(http_line) != 3:
+                raise Exception
+        except Exception:
+            return False # invalid http line
+
+        method, path, protocol = http_line # get the three components of the http line
+
+        self.path = path
+
+        complete_url = protocol.split('/')[0].lower() + '://' + server.app._get_hostname() + ':' + str(server.app._get_port()) + path # build the complete url
+
+        http_str = http_str.replace('\r', '').split('\n')[1:] # format line endings then split by them. Remove the http header line
+
+        headers = dict() # dict to store headers for request
+        section = 'header' # track section (headers or body)
+        body = None # string to hold body
+
+        # iterate through lines of the request
+        for index, line in enumerate(http_str):
+            if section == 'header':
+                # headers
+                line = line.split(':', 1) # split the header line by name:value pairs
+                if line[0] is None or line[0]=='':
+                    # the is a new line after the headers but before the body, so change sections from headers to body
+                    section = 'body'
+                    continue
+                line[0] = line[0].replace(' ', '')
+                line[1] = line[1].replace(' ', '')
+                headers[line[0].upper()] = line[1] # add the entry to the headers dictionary
+            else:
+                # body
+                body = '\n'.join(http_str[index:]) # add the entire body in one chunk, after putting the lines together
+                break
+
+
+        if 'Content-Type'.upper() in headers:
+            supported_types = ['text/plain', 'application/json', 'application/x-www-form-urlencoded'] # declare suported types
+            content_type = headers['Content-Type'.upper()] # get the incoming request type
+
+            # check if the type is supported
+            if content_type in supported_types:
+                # text/plain
+                if content_type == 'text/plain':
+                    # body stays as string
+                    pass
+                # application/json
+                elif content_type == 'application/json':
+                    # body json string gets turned into Object using json built in module
+                    body = json.loads(body)
+                # application/x-www-form-urlencoded
+                elif content_type == 'application/x-www-form-urlencoded':
+                    # body form encoded turned into Object using urllib built in component
+                    body = urllib.parse.parse_qs(body)
+            else:
+                print('WARN Content-Type %s is not supported' % content_type)
+
+        self.request = Request(server.app, complete_url, protocol, method, headers, body=body, params=dict(), cookies=None, baseUrl=None)
 
 
 class Request():
