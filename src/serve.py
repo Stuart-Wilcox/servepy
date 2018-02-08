@@ -697,7 +697,7 @@ class Response():
         self.headers_sent = True
         if body is not None:
             #convert body to json
-            jsonBody = body
+            jsonBody = json.dumps(body)
             self.send(jsonBody)
         else:
             self.send('{}')

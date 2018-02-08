@@ -13,6 +13,7 @@ if __name__ == '__main__':
 
     def log_incoming_request(req, res, next):
         print('[%s] %s' % (req.method, req.originalUrl) )
+        print(req.body)
         next()
 
     app = App()
