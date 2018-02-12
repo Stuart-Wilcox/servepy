@@ -1,6 +1,8 @@
-# Serverpy
+# servepy
 
-Servepy is an HTTP server framework modelled after the Express.js library for Node.js
+servepy is a web server framework inspired by Express.js
+
+For more info, installation and usage visit [servepy's official site](http://servepy.com/)
 
 ## Contents
 [Installation](#installation)
@@ -62,7 +64,7 @@ def getRoot(req, res):
 ```
 Execute your server in a terminal (command prompt)
 
-In your web browser (or if you prefer, a REST API client like Postman or Insomnia), navigate to http://localhost:8080/ to see the message 'Hello World'. To stop the server, make sure it is not in the middle of serving a request and issue a keyboard interrupt with CTRL+C.
+In your web browser (or if you prefer, a REST API client like Postman or Insomnia), navigate to http://localhost:8080/ to see the message 'Hello World'. To stop the server, issue a keyboard interrupt with CTRL+C.
 
 ### Sample
 
@@ -71,7 +73,7 @@ To see a working example, look at what is in the [sample directory](./sample). I
 To run the sample, in a temrinal (command prompt) navigate to the root of the servepy directory and simply execute sample. Windows: ```sample.bat``` <br/>
 Linux: ```sample.sh```
 
-NOTE: Linux users will most likely need to give execution permission to ```sample.sh```. To do so, in the project directory use the command ```$ sudo chmod +x sample.sh```.
+*NOTE: Linux users will most likely need to give execution permission to ```sample.sh```. To do so, in the project directory use the command ```$ sudo chmod +x sample.sh```.*
 
 ## Documentation
 
@@ -129,16 +131,13 @@ Contains the cookies sent by the request. If there are no cookies, it defaults t
 Indicates whether the request is 'fresh'. It is the opposite of ```req.stale```. It is true if the ```cache-control``` request header doesn't have a ```no-cache``` directive and any of the following are true:
   - The ```if-modified-since``` request header is specified and ```last-modified``` request header is equal to or earlier than the modified response header
   - The ```if-none-match``` request header is *
-  - The ```if-none-match``` request header, after being parsed into its directives, does not match the ```etage``` response header.
+  - The ```if-none-match``` request header, after being parsed into its directives, does not match the ```stage``` response header.
 
 ###### hostname
 Contains the hostname derived from the ```Host``` HTTP header. When the trust proxy setting does not evaluate to false, this property will instead have the value of the ```X-Forwarded-Host``` header field. This header can be set by the client or by the proxy.
-###### ip
-Contains the remove IP address of the request. When the trust proxy setting does not evaluate to false, tye vakue of this property is derived from the left-most entry in the ```X-Forwarded-For``` header. This header can be set by the client or by the proxy.
-###### ips
-When the trust proxy setting does not evaluate to false, this property contains an array of IP addresses specified in the ```X-Forwarded-For``` request header. Otherwise, it contains an empty array. This header can be set by the client or by the proxy.
 ###### method
 Contains a string corresponding to the HTTP method if the request: ```GET, POST, PUT, DELETE, ...etc.```
+<br/>**NOTE: Support only exists for GET, POST, PUT & DELETE. Other methods such as HEAD, OPTIONS, etc. are not yet supported**
 ###### originalUrl
 This property is much like ```req.url```; however, it retains the original request URL, allowing you to rewrite it freely for internal routing purposes. For example, the "mounting" feature of ```app.use()``` will rewrite ```req.url``` to strip the mount point
 ###### params
@@ -148,22 +147,20 @@ Contains the path part of the request URL.
 ###### protocol
 Contains the request protocol string, ex: ```HTTP/1.1```
 ###### query
-This property is a ```dict``` containing a property for each query string parameter in the route. If there is no query string, it is ```{}```; an empty dictionary.
+This property is a ```dict``` containing a property for each query string parameter in the route. If there is no query string, it is ```{}```; an empty dictionary
 ###### route
-Contains the currently-matched route, a string.
+Contains the currently-matched route, a string
 ###### stale
 Indicates whether the request is "stale", and it is the opposite of fresh. (See req.fresh)
 ###### xhr
-A Boolean property that is ```True``` if the request's ```X-Requested-With``` header is "XMLHttpRequest", indicating that the request was issued by a client library such as JQuery.
+A Boolean property that is ```True``` if the request's ```X-Requested-With``` header is "XMLHttpRequest", indicating that the request was issued by a client library such as JQuery
 #### Methods
 ###### accepts(types)
-Checks if the specified content types are acceptable, based on the request’s ```Accept``` HTTP header field. The method returns the best match, or if none of the specified content types is acceptable, returns ```False``` (in which case, the application should respond with 406 "Not Acceptable").
+Checks if the specified content types are acceptable, based on the request’s ```Accept``` HTTP header field. The method returns the best match, or if none of the specified content types is acceptable, returns ```False``` (in which case, the application should respond with 406 "Not Acceptable")
 ###### get(field)
-Returns the specified HTTP request header field (case-insensitive match). The Referrer and Referer fields are interchangeable.
+Returns the specified HTTP request header field (case-insensitive match). The Referrer and Referer fields are interchangeable
 ###### is_type(type)
-Returns the matching content type if the incoming request’s ```Content-Type``` HTTP header field matches the MIME type specified by the type parameter. Returns ```False``` otherwise.
-###### param(name [, defaultValue])
-Deprecated. Use either req.params, req.body or req.query, as applicable.
+Returns the matching content type if the incoming request’s ```Content-Type``` HTTP header field matches the MIME type specified by the type parameter. Returns ```False``` otherwise
 
 
 ### Response
