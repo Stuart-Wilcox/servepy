@@ -43,7 +43,7 @@ import servepy
 import handlers
 
 app = servepy.App()
-router = serverpy.Router()
+router = servepy.Router()
 
 # this specifies that a GET request to url path '/' will execute the function handlers.getRoot
 router.get('/', handlers.getRoot)
