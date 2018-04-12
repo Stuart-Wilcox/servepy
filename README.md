@@ -1,4 +1,4 @@
-# servepy
+# servepy 1.0.3
 
 servepy is a web server framework inspired by Express.js
 
