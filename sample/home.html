@@ -8,5 +8,13 @@
     <p>
       This is a sample page to demonstrate the functionality of servepy!
     </p>
+    <hr />
+    <form id="nameForm" method="post" action="/">
+      <input type="text" name="name" required autofocus/>
+      <button type="submit" role="button">Submit</button>
+    </form>
+    <li id="nameList">
+      {{names}}
+    </li>
   </body>
 </html>

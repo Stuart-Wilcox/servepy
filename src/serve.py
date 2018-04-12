@@ -560,7 +560,12 @@ class _Http():
                 # application/x-www-form-urlencoded
                 elif content_type == 'application/x-www-form-urlencoded':
                     # body form encoded turned into Object using urllib built in component
-                    body = urllib.parse.parse_qs(body)
+                    # body = urllib.parse.parse_qs(body) # this didn't seem to work properly
+                    body_str = body.split('&')
+                    body = {}
+                    for pair in body_str:
+                        key, value = pair.split('=')
+                        body[key] = value.replace('+', ' ')
             else:
                 print('WARN Content-Type %s is not supported' % content_type)
 
@@ -693,7 +698,7 @@ class Response():
             return None
 
     def json(self, body=None):
-        self.headers['Content-Type'] = 'application/json'.upper()
+        self.__headers['Content-Type'] = 'application/json'.upper()
         self.headers_sent = True
         if body is not None:
             #convert body to json
@@ -703,8 +708,12 @@ class Response():
             self.send('{}')
 
     def send(self, body=None):
-        self._body = body
-        self.set('Content-Length'.upper(), len(bytes(body, 'utf-8')))
+        if body is None:
+            self._body = ''
+            self.set('Content-Length', 0)
+        else:
+            self._body = body
+            self.set('Content-Length'.upper(), len(bytes(body, 'utf-8')))
         self.set('Connection'.upper(), 'close')
         self.headers_sent = True
         self._sent = True
