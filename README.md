@@ -2,7 +2,7 @@
 
 servepy is a web server framework inspired by Express.js
 
-For more info, installation and usage visit [servepy's official site](http://servepy.com/)
+For more info, installation and usage visit [servepy's official site](https://stuart-wilcox.github.io/servepy-site/main)
 
 ## Contents
 [Installation](#installation)
